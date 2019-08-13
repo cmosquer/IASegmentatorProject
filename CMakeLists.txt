@@ -29,7 +29,7 @@ endif()
 # Superbuild Option - Enabled by default
 #-----------------------------------------------------------------------------
 
-option(${MY_PROJECT_NAME}_USE_SUPERBUILD "Build ${MY_PROJECT_NAME} and the projects it depends on via SuperBuild.cmake." ON)
+option(${MY_PROJECT_NAME}_USE_SUPERBUILD "Build ${MY_PROJECT_NAME} and the projects it depends on via SuperBuild.cmake." OFF)
 
 if(${MY_PROJECT_NAME}_USE_SUPERBUILD)
   project(${MY_PROJECT_NAME}-superbuild)
@@ -98,7 +98,7 @@ endforeach()
 
 option(BUILD_SHARED_LIBS "Build ${MY_PROJECT_NAME} with shared libraries" ON)
 option(WITH_COVERAGE "Enable/Disable coverage" OFF)
-option(BUILD_TESTING "Test the project" ON)
+option(BUILD_TESTING "Test the project" OFF)
 
 option(${MY_PROJECT_NAME}_BUILD_ALL_PLUGINS "Build all ${MY_PROJECT_NAME} plugins" OFF)
 

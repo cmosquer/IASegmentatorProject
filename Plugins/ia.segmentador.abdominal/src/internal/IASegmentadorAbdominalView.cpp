@@ -200,7 +200,6 @@ bool IASegmentadorAbdominalView::checkIfOrganSegm(std::string nodeName)
 
 void IASegmentadorAbdominalView::DoImageProcessing()
 {
-
   QList<mitk::DataNode::Pointer> nodes = this->GetDataManagerSelection();
   if (nodes.empty())
     return;
@@ -225,6 +224,7 @@ void IASegmentadorAbdominalView::DoImageProcessing()
   mitk::BaseData *data = node->GetData();
   if (data)
   {
+
     // test if this data item is an image or not (could also be a surface or something totally different)
     mitk::Image *image = dynamic_cast<mitk::Image *>(data);
     if (image)
@@ -248,7 +248,9 @@ void IASegmentadorAbdominalView::DoImageProcessing()
       m_Controls.buttonPerformImageProcessing->setEnabled(true);
     //GetDataStorage()->Add(output_node);
     }
+
   }
+
 }
 
 IASegmentadorAbdominalView::~IASegmentadorAbdominalView()

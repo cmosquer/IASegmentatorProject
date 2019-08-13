@@ -22,10 +22,23 @@ class IASegmentadorAbdominal_EXPORT Inference{
 
     private:
         void SaveInput(mitk::Image *image, std::string inputpath);
-        void ProcessNiftynet(int model_type);
+        void ProcessNiftynet();
+        std::string GetOrgansList();
         void InstallPackages();
         void LoadImageFromPath(mitk::DataStorage::Pointer ds, std::string outputpath);
-        void CreateSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name           );
+        void CreateSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name);
+        void SetPaths();
+        void SetModelSubdir(int model_type);
+
+        std::string NIFTYNETPATH;
+        std::string INPUT;
+        std::string INPUTNAME;
+        std::string OUTPUT;
+        std::string OUTPUTNAME;
+        std::string SHFILE;
+
+        std::string MODELSUBDIR;
+        std::vector<std::string> MODELNAMES;
 
 };
 

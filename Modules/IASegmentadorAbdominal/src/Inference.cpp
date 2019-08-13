@@ -23,29 +23,56 @@
 
 
 #include <QMessageBox>
+#include <string>
+
+#include <stdio.h>  /* defines FILENAME_MAX */
+#ifdef _WIN32 || _WIN64
+    #include <direct.h>
+    #define GetCurrentDir _getcwd
+#else
+    #include <unistd.h>
+    #define GetCurrentDir getcwd
+ #endif
+
 
 typedef itksys::SystemTools ist;
-static std::string NIFTYNETPATH = "/home/cineot/Documents/CANDE/work/bin/IASegmentador/Modules/IASegmentadorAbdominal/NiftyNet/";
-static std::string ABDOMINALSUBDIR = "abdominal_inference/";
-static std::string INPUT = "inputs/";
-static std::string INPUTNAME = "_input.nii";
-static std::string OUTPUT = "outputs/";
-static std::string OUTPUTNAME = "_input_niftynet_out.nii.gz";
-static std::string SHFILE = "segmentation.sh";
-static std::string MASKS_SHFILE = "_mask.sh";
-
 
 Inference::Inference()
 {
-
+   SetPaths();
 }
 Inference::~Inference()
 {
 
 }
+
+
+
 inline bool exists (const std::string& filename) {
   struct stat buffer;
   return (stat (filename.c_str(), &buffer) == 0);
+}
+
+
+void Inference::SetPaths()
+{
+    char cCurrentPath[FILENAME_MAX];
+
+    if (!GetCurrentDir(cCurrentPath, sizeof(cCurrentPath)))
+        {
+        cout<< errno <<endl;
+        }
+    std::string s = cCurrentPath;
+    std::string delimiter = "/";
+    NIFTYNETPATH = s.substr(0, s.find_last_of(delimiter)) + "/Modules/IASegmentadorAbdominal/NiftyNet/";
+
+    INPUT = "/inputs/";
+    OUTPUT = "/outputs/";
+    INPUTNAME = "_input.nii";
+    OUTPUTNAME = "_input_niftynet_out.nii.gz";
+    SHFILE = "/inference.sh";
+
+    MODELNAMES = {"abdominal"};
 }
 void Inference::SaveInput(mitk::Image *image, std::string inputpath)
 {
@@ -69,7 +96,7 @@ void Inference::InstallPackages()
 {
     QProcess p;
     QStringList params;
-    std::string bashfile = NIFTYNETPATH + ABDOMINALSUBDIR + SHFILE;
+    std::string bashfile = NIFTYNETPATH + MODELSUBDIR + SHFILE;
     QString bashfileQ(bashfile.c_str());
     params<<bashfileQ;
     p.start("bash",params);
@@ -80,15 +107,29 @@ void Inference::InstallPackages()
 
 }
 
-void Inference::ProcessNiftynet(int model_type)
+std::string Inference::GetOrgansList()
 {
+    std::string organsList = "";
+    for(std::vector<int>::size_type i = 0; i != m_selected_labels.size(); i++) {
+        //cout<<organs_names[i]<< ". " << m_selected_labels[i]<<endl;
+
+        if (m_selected_labels[i]==1)        {
+           organsList = organsList +  "-" + char(i);
+        }
+        }
+    return organsList;
+}
+
+void Inference::ProcessNiftynet(){
 
 
     QProcess p;
     QStringList params;
-    std::string bashfile = NIFTYNETPATH + ABDOMINALSUBDIR + SHFILE;
+    std::string bashfile = NIFTYNETPATH + MODELSUBDIR + SHFILE;
+    cout<<"bashfile: "<<bashfile<<endl;
     QString bashfileQ(bashfile.c_str());
-    params<<bashfileQ;
+    QString labelsList(GetOrgansList().c_str());
+    params<<bashfileQ<<labelsList;
     p.start("bash",params);
     p.waitForFinished(-1);
     QString output(p.readAllStandardOutput());
@@ -103,7 +144,7 @@ void Inference::CleanDir()
     QProcess p;
 
     QStringList params;
-    std::string command = "rm -f " + NIFTYNETPATH + ABDOMINALSUBDIR + OUTPUT + "*";
+    std::string command = "rm -f " + NIFTYNETPATH + MODELSUBDIR + OUTPUT + "*";
     QString commandQ(command.c_str());
     params<<commandQ;
     cout<<"Comando clean dir: "<<command<<endl;
@@ -111,7 +152,7 @@ void Inference::CleanDir()
     p.waitForFinished(-1);
 
     QStringList params2;
-    std::string command2 = "-f " + NIFTYNETPATH + ABDOMINALSUBDIR + INPUT + "*";
+    std::string command2 = "-f " + NIFTYNETPATH + MODELSUBDIR + INPUT + "*";
     QString commandQ2(command2.c_str());
     params<<commandQ2;
     p.start("rm",params2);
@@ -146,6 +187,7 @@ void Inference::CreateSegmentationMasks(mitk::DataStorage::Pointer ds, std::stri
             }
             else
             {
+                /*
                 std::string bashfile = NIFTYNETPATH + ABDOMINALSUBDIR + organs_names[i] + MASKS_SHFILE;
                 cout <<"Bashfile: "<<bashfile <<endl;
                 QString bashfileQ(bashfile.c_str());
@@ -155,7 +197,8 @@ void Inference::CreateSegmentationMasks(mitk::DataStorage::Pointer ds, std::stri
                 p.waitForFinished(-1);
                 QString output(p.readAllStandardOutput());
                 cout << output.toStdString() <<endl;
-                outputpath = NIFTYNETPATH + ABDOMINALSUBDIR + OUTPUT + organs_names[i] + ".nii";
+                */
+                outputpath = NIFTYNETPATH + MODELSUBDIR + OUTPUT + organs_names[i] + ".nii";
                 LoadImageFromPath(ds, outputpath);
                 ds->GetNamedNode(organs_names[i])->SetName(node_name+" "+organs_names[i]);
             }
@@ -166,15 +209,20 @@ void Inference::CreateSegmentationMasks(mitk::DataStorage::Pointer ds, std::stri
     }
 }
 
-void Inference::InfereSegmentation(mitk::Image *input_image, QString node_name,int model_type, mitk::DataStorage::Pointer ds)//mitk::DataNode *output_node)
+void Inference::SetModelSubdir(int model_type)
 {
 
-    std::string inputpath = NIFTYNETPATH + ABDOMINALSUBDIR +INPUT + node_name.toStdString() + INPUTNAME;
-    SaveInput(input_image, inputpath);//,saving_path);
-    std::string outputpath = NIFTYNETPATH + ABDOMINALSUBDIR + OUTPUT + node_name.toStdString() + OUTPUTNAME;
+    MODELSUBDIR = "/" + MODELNAMES[model_type] + "/";
+}
+void Inference::InfereSegmentation(mitk::Image *input_image, QString node_name,int model_type, mitk::DataStorage::Pointer ds)//mitk::DataNode *output_node)
+{
+    SetModelSubdir(model_type);
+    std::string inputpath = NIFTYNETPATH + MODELSUBDIR +INPUT + node_name.toStdString() + INPUTNAME;
+    SaveInput(input_image, inputpath);
+    std::string outputpath = NIFTYNETPATH + MODELSUBDIR + OUTPUT + node_name.toStdString() + OUTPUTNAME;
     if (exists(outputpath)!=1)
     {
-        ProcessNiftynet(model_type);
+        ProcessNiftynet();
         LoadImageFromPath(ds, outputpath);
     }
     else
