@@ -43,7 +43,7 @@ Inference::Inference()
 }
 Inference::~Inference()
 {
-
+    CleanDir();
 }
 
 
@@ -68,10 +68,11 @@ void Inference::SetPaths()
 
     INPUT = "/inputs/";
     OUTPUT = "/outputs/";
+    SEGMENTATION = "/segmentations/";
     INPUTNAME = "_input.nii";
     OUTPUTNAME = "_input_niftynet_out.nii.gz";
-    SHFILE = "/inference.sh";
-
+    SHFILE = "inference.sh";
+    MASKS_SHFILE = "masks.sh";
     MODELNAMES = {"abdominal"};
 }
 void Inference::SaveInput(mitk::Image *image, std::string inputpath)
@@ -114,23 +115,25 @@ std::string Inference::GetOrgansList()
         //cout<<organs_names[i]<< ". " << m_selected_labels[i]<<endl;
 
         if (m_selected_labels[i]==1)        {
-           organsList = organsList +  "-" + char(i);
+           organsList = organsList +  "-" + std::to_string(i);
         }
         }
+    cout<<organsList<<endl;
     return organsList;
 }
 
 void Inference::ProcessNiftynet(){
 
-
+    std::string bashfile = NIFTYNETPATH + MODELSUBDIR + SHFILE;
     QProcess p;
     QStringList params;
-    std::string bashfile = NIFTYNETPATH + MODELSUBDIR + SHFILE;
-    cout<<"bashfile: "<<bashfile<<endl;
-    QString bashfileQ(bashfile.c_str());
-    QString labelsList(GetOrgansList().c_str());
-    params<<bashfileQ<<labelsList;
-    p.start("bash",params);
+
+    //cout<<"bashfile: "<<bashfile<<endl;
+    //QString bashfileQ(bashfile.c_str());
+    //QString labelsList(GetOrgansList().c_str());
+    //params<<"-i"<<bashfileQ;//<<labelsList;
+    params<<"-i"<<bashfile.c_str()<<GetOrgansList().c_str();
+    p.start("bash",params); // ,params);
     p.waitForFinished(-1);
     QString output(p.readAllStandardOutput());
     cout << output.toStdString() <<endl;
@@ -144,75 +147,120 @@ void Inference::CleanDir()
     QProcess p;
 
     QStringList params;
-    std::string command = "rm -f " + NIFTYNETPATH + MODELSUBDIR + OUTPUT + "*";
-    QString commandQ(command.c_str());
-    params<<commandQ;
+    std::string command = NIFTYNETPATH + MODELSUBDIR + OUTPUT + "*";
+    params<<"rm"<<"-f"<<command.c_str();
     cout<<"Comando clean dir: "<<command<<endl;
-    p.start(commandQ);
+    p.start("bash",params);
     p.waitForFinished(-1);
-
-    QStringList params2;
-    std::string command2 = "-f " + NIFTYNETPATH + MODELSUBDIR + INPUT + "*";
-    QString commandQ2(command2.c_str());
-    params<<commandQ2;
-    p.start("rm",params2);
-    p.waitForFinished(-1);
-
     QString output = p.readAllStandardOutput();
-
-    cout << output.toStdString() <<endl;
 
     p.close();
 
+    QProcess p2;
+
+    QStringList params2;
+    std::string command2 = NIFTYNETPATH + MODELSUBDIR + INPUT + "*";
+    params2<<"-i"<<"rm"<<"-f"<<command2.c_str();
+    cout<<"Comando clean dir: "<<command2<<endl;
+    p2.start("bash",params2);
+    p2.waitForFinished(-1);
+
+    output = p2.readAllStandardOutput();
+
+    cout << output.toStdString() <<endl;
+
+    p2.close();
+    QProcess p3;
+
+    QStringList params3;
+    std::string command3 = NIFTYNETPATH + MODELSUBDIR + SEGMENTATION + "*";
+    params3<<"rm"<<"-f"<<command3.c_str();
+    cout<<"Comando clean dir: "<<command3<<endl;
+    p3.start("bash",params3);
+    p3.waitForFinished(-1);
+
+    output = p3.readAllStandardOutput();
+
+    cout << output.toStdString() <<endl;
+
+    p2.close();
+
 
 }
-void Inference::CreateSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name)
+void Inference::LoadSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name)
 {
 
 
-    QProcess p;
-
+    bool executeMasks=false;
+    std::string missingMasks="";
     std::string outputpath;
-    for(std::vector<int>::size_type i = 0; i != m_selected_labels.size(); i++) {
+    std::vector<int> missingMasksIdx;
+    for(std::vector<int>::size_type i = 0; i != m_selected_labels.size(); i++)
+    {
         //cout<<organs_names[i]<< ". " << m_selected_labels[i]<<endl;
 
-        if (m_selected_labels[i]==1)        {
+        if (m_selected_labels[i]==1)
+        {
             mitk::DataNode::Pointer current_node = ds->GetNamedNode(node_name+" "+organs_names[i]);
-            if (current_node)
+            if (!current_node)
             {
-                std::string msg = "Ya existe una segmentación de " + organs_names[i] + " para " +node_name + ".\n Si por algún motivo desea realizar la segmentación nuevamente, cambie el nombre del nodo " +node_name+" "+organs_names[i]+ ".";
-                QString message(msg.c_str());
-                QMessageBox::warning(NULL, "Segmentación ya existente",message);
+                outputpath = NIFTYNETPATH + MODELSUBDIR + SEGMENTATION + organs_names[i] + ".mha";
+                if(exists(outputpath))
+                {
+                    LoadImageFromPath(ds, outputpath);
+                    ds->GetNamedNode(organs_names[i])->SetName(node_name+" "+organs_names[i]);
+                }
+                else
+                {
+                    cout<<"Falta la mascara de "<<organs_names[i]<<endl;
+                    executeMasks = true;
+                    missingMasks = missingMasks +  "-" + std::to_string(i);
+                    missingMasksIdx.push_back(i);
+                }
 
             }
-            else
-            {
-                /*
-                std::string bashfile = NIFTYNETPATH + ABDOMINALSUBDIR + organs_names[i] + MASKS_SHFILE;
-                cout <<"Bashfile: "<<bashfile <<endl;
-                QString bashfileQ(bashfile.c_str());
-                QStringList params;
-                params<<bashfileQ;
-                p.start("bash",params);
-                p.waitForFinished(-1);
-                QString output(p.readAllStandardOutput());
-                cout << output.toStdString() <<endl;
-                */
-                outputpath = NIFTYNETPATH + MODELSUBDIR + OUTPUT + organs_names[i] + ".nii";
-                LoadImageFromPath(ds, outputpath);
-                ds->GetNamedNode(organs_names[i])->SetName(node_name+" "+organs_names[i]);
-            }
+
         }
+    }
+    if (executeMasks)
+    {
+        QProcess p;
 
+        std::string bashfile = NIFTYNETPATH + MODELSUBDIR + MASKS_SHFILE;
+        cout <<"Bashfile: "<<bashfile <<endl;
+        QString bashfileQ(bashfile.c_str());
+        QStringList params;
+        cout<<"Missing masks: "<<missingMasks<<endl;
+        params<<"-i"<<bashfile.c_str()<<missingMasks.c_str();
+        p.start("bash",params);
+        p.waitForFinished(-1);
+        QString output(p.readAllStandardOutput());
+        cout << output.toStdString() <<endl;
         p.close();
 
-    }
+        for(std::vector<int>::size_type j = 0; j != missingMasksIdx.size(); j++)
+        {
+            outputpath = NIFTYNETPATH + MODELSUBDIR + SEGMENTATION + organs_names[missingMasksIdx[j]] + ".mha";
+            cout<<outputpath<<endl;
+            if(exists(outputpath))
+            {
+                cout<<"Cargando la mascara de "<<organs_names[missingMasksIdx[j]]<<endl;
+                LoadImageFromPath(ds, outputpath);
+                ds->GetNamedNode(organs_names[missingMasksIdx[j]])->SetName(node_name+" "+organs_names[missingMasksIdx[j]]);
+            }
+
+         }
+
+      }
+
 }
+
+
 
 void Inference::SetModelSubdir(int model_type)
 {
 
-    MODELSUBDIR = "/" + MODELNAMES[model_type] + "/";
+    MODELSUBDIR = MODELNAMES[model_type] + "/";
 }
 void Inference::InfereSegmentation(mitk::Image *input_image, QString node_name,int model_type, mitk::DataStorage::Pointer ds)//mitk::DataNode *output_node)
 {
@@ -223,20 +271,22 @@ void Inference::InfereSegmentation(mitk::Image *input_image, QString node_name,i
     if (exists(outputpath)!=1)
     {
         ProcessNiftynet();
-        LoadImageFromPath(ds, outputpath);
+        LoadSegmentationMasks(ds,node_name.toStdString());
     }
     else
     {
         cout<<"ya existe la segmentacion"<<endl;
+        LoadSegmentationMasks(ds,node_name.toStdString());
+
     }
         //mitk::Image::Pointer output_image;
     //output_node->SetData(output_image);
     //output_node->SetName("SegmentacionIA");
-    CreateSegmentationMasks(ds,node_name.toStdString());
+
 
     //ds->GetNamedNode(outputpath)->SetName("Todos");
 
-    //CleanDir();
+    //
 
 
 }

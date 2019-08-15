@@ -26,7 +26,7 @@ class IASegmentadorAbdominal_EXPORT Inference{
         std::string GetOrgansList();
         void InstallPackages();
         void LoadImageFromPath(mitk::DataStorage::Pointer ds, std::string outputpath);
-        void CreateSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name);
+        void LoadSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name);
         void SetPaths();
         void SetModelSubdir(int model_type);
 
@@ -35,8 +35,9 @@ class IASegmentadorAbdominal_EXPORT Inference{
         std::string INPUTNAME;
         std::string OUTPUT;
         std::string OUTPUTNAME;
+        std::string SEGMENTATION;
         std::string SHFILE;
-
+        std::string MASKS_SHFILE;
         std::string MODELSUBDIR;
         std::vector<std::string> MODELNAMES;
 
