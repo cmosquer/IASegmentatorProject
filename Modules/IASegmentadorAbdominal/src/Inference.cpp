@@ -19,8 +19,8 @@
 #include <itkImage.h>
 #include <itkThresholdImageFilter.h>
 #include <itkImageFileReader.h>
-#include "mitkImageCast.h"
-
+#include <mitkImageCast.h>
+#include <mitkColorSequenceRainbow.h>
 
 #include <QMessageBox>
 #include <string>
@@ -39,7 +39,8 @@ typedef itksys::SystemTools ist;
 
 Inference::Inference()
 {
-   SetPaths();
+
+    SetPaths();
 }
 Inference::~Inference()
 {
@@ -65,7 +66,6 @@ void Inference::SetPaths()
     std::string s = cCurrentPath;
     std::string delimiter = "/";
     NIFTYNETPATH = s.substr(0, s.find_last_of(delimiter)) + "/Modules/IASegmentadorAbdominal/NiftyNet/";
-
     INPUT = "/inputs/";
     OUTPUT = "/outputs/";
     SEGMENTATION = "/segmentations/";
@@ -74,17 +74,17 @@ void Inference::SetPaths()
     SHFILE = "inference.sh";
     MASKS_SHFILE = "masks.sh";
     MODELNAMES = {"abdominal"};
+
 }
 void Inference::SaveInput(mitk::Image *image, std::string inputpath)
 {
-    cout<<"Existencia: "<<exists(inputpath)<<endl;
     if (exists(inputpath)!=1)
     {
         mitk::IOUtil::Save(image, inputpath);
     }
     else
     {
-        cout<<"ya existe la imagen en inputs"<<endl;
+        cout<<"Ya existe la imagen Nifti en Inputs"<<endl;
     }
 }
 
@@ -118,7 +118,6 @@ std::string Inference::GetOrgansList()
            organsList = organsList +  "-" + std::to_string(i);
         }
         }
-    cout<<organsList<<endl;
     return organsList;
 }
 
@@ -132,7 +131,8 @@ void Inference::ProcessNiftynet(){
     //QString bashfileQ(bashfile.c_str());
     //QString labelsList(GetOrgansList().c_str());
     //params<<"-i"<<bashfileQ;//<<labelsList;
-    params<<"-i"<<bashfile.c_str()<<GetOrgansList().c_str();
+    cout<<"INICIA NIFTYNET"<<endl;
+    params<<"-i"<<bashfile.c_str();
     p.start("bash",params); // ,params);
     p.waitForFinished(-1);
     QString output(p.readAllStandardOutput());
@@ -144,6 +144,16 @@ void Inference::ProcessNiftynet(){
 void Inference::CleanDir()
 {
 
+    std::string command = "exec rm -r" + NIFTYNETPATH + MODELSUBDIR + OUTPUT;
+    system(command.c_str());
+
+    std::string command1 = "exec rm -r" + NIFTYNETPATH + MODELSUBDIR + INPUT;
+    system(command1.c_str());
+
+    std::string command2 = "exec rm -r" + NIFTYNETPATH + MODELSUBDIR + SEGMENTATION;
+    system(command2.c_str());
+
+    /*
     QProcess p;
 
     QStringList params;
@@ -183,10 +193,20 @@ void Inference::CleanDir()
 
     cout << output.toStdString() <<endl;
 
-    p2.close();
+    p2.close(); */
 
 
 }
+
+void Inference::WriteRequiredLabelsTXT(std::string requiredLabels)
+{
+    ofstream myfile;
+    std::string filename = NIFTYNETPATH+MODELSUBDIR+"requiredLabels.txt";
+    myfile.open(filename);
+    myfile<<requiredLabels;
+    myfile.close();
+}
+
 void Inference::LoadSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name)
 {
 
@@ -195,6 +215,7 @@ void Inference::LoadSegmentationMasks(mitk::DataStorage::Pointer ds, std::string
     std::string missingMasks="";
     std::string outputpath;
     std::vector<int> missingMasksIdx;
+    //cout<<"Cargando las máscaras al workbench..."<<endl;
     for(std::vector<int>::size_type i = 0; i != m_selected_labels.size(); i++)
     {
         //cout<<organs_names[i]<< ". " << m_selected_labels[i]<<endl;
@@ -208,11 +229,14 @@ void Inference::LoadSegmentationMasks(mitk::DataStorage::Pointer ds, std::string
                 if(exists(outputpath))
                 {
                     LoadImageFromPath(ds, outputpath);
+
+                    ds->GetNamedNode(organs_names[i])->SetColor(m_Rainbow.GetNextColor());
+                    ds->GetNamedNode(organs_names[i])->SetBoolProperty("binary",false);
                     ds->GetNamedNode(organs_names[i])->SetName(node_name+" "+organs_names[i]);
                 }
                 else
                 {
-                    cout<<"Falta la mascara de "<<organs_names[i]<<endl;
+                    cout<<"No existe mascara de "<<organs_names[i]<<endl;
                     executeMasks = true;
                     missingMasks = missingMasks +  "-" + std::to_string(i);
                     missingMasksIdx.push_back(i);
@@ -224,15 +248,14 @@ void Inference::LoadSegmentationMasks(mitk::DataStorage::Pointer ds, std::string
     }
     if (executeMasks)
     {
-        QProcess p;
-
+        //cout<<"Falta crear las máscaras de: "<<missingMasks<<endl;
+        WriteRequiredLabelsTXT(missingMasks);
         std::string bashfile = NIFTYNETPATH + MODELSUBDIR + MASKS_SHFILE;
-        cout <<"Bashfile: "<<bashfile <<endl;
-        QString bashfileQ(bashfile.c_str());
+        cout<<"Iniciando procesamiento de máscaras..."<<endl;
+        QProcess p;
         QStringList params;
-        cout<<"Missing masks: "<<missingMasks<<endl;
-        params<<"-i"<<bashfile.c_str()<<missingMasks.c_str();
-        p.start("bash",params);
+        params<<"-i"<<bashfile.c_str();
+        p.start("bash",params); // ,params);
         p.waitForFinished(-1);
         QString output(p.readAllStandardOutput());
         cout << output.toStdString() <<endl;
@@ -241,11 +264,13 @@ void Inference::LoadSegmentationMasks(mitk::DataStorage::Pointer ds, std::string
         for(std::vector<int>::size_type j = 0; j != missingMasksIdx.size(); j++)
         {
             outputpath = NIFTYNETPATH + MODELSUBDIR + SEGMENTATION + organs_names[missingMasksIdx[j]] + ".mha";
-            cout<<outputpath<<endl;
+            //cout<<outputpath<<endl;
             if(exists(outputpath))
             {
-                cout<<"Cargando la mascara de "<<organs_names[missingMasksIdx[j]]<<endl;
+                //cout<<"Cargando la mascara de "<<organs_names[missingMasksIdx[j]]<<endl;
                 LoadImageFromPath(ds, outputpath);
+                ds->GetNamedNode(organs_names[missingMasksIdx[j]])->SetColor(m_Rainbow.GetNextColor());
+                ds->GetNamedNode(organs_names[missingMasksIdx[j]])->SetBoolProperty("binary",false);
                 ds->GetNamedNode(organs_names[missingMasksIdx[j]])->SetName(node_name+" "+organs_names[missingMasksIdx[j]]);
             }
 
@@ -264,6 +289,7 @@ void Inference::SetModelSubdir(int model_type)
 }
 void Inference::InfereSegmentation(mitk::Image *input_image, QString node_name,int model_type, mitk::DataStorage::Pointer ds)//mitk::DataNode *output_node)
 {
+    cout<<"Inicia segmentacion"<<endl;
     SetModelSubdir(model_type);
     std::string inputpath = NIFTYNETPATH + MODELSUBDIR +INPUT + node_name.toStdString() + INPUTNAME;
     SaveInput(input_image, inputpath);
@@ -275,7 +301,7 @@ void Inference::InfereSegmentation(mitk::Image *input_image, QString node_name,i
     }
     else
     {
-        cout<<"ya existe la segmentacion"<<endl;
+        cout<<"Ya existe la segmentacion de Niftynet en Outputs"<<endl;
         LoadSegmentationMasks(ds,node_name.toStdString());
 
     }

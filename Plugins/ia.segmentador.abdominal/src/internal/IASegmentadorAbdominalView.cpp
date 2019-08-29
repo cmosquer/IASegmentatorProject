@@ -200,6 +200,11 @@ bool IASegmentadorAbdominalView::checkIfOrganSegm(std::string nodeName)
 
 void IASegmentadorAbdominalView::DoImageProcessing()
 {
+  cout<<CLOCKS_PER_SEC<<endl;
+  return;
+  clock_t tStart = clock();
+
+  cout<<"Botón presionado"<<endl;
   QList<mitk::DataNode::Pointer> nodes = this->GetDataManagerSelection();
   if (nodes.empty())
     return;
@@ -229,16 +234,16 @@ void IASegmentadorAbdominalView::DoImageProcessing()
     mitk::Image *image = dynamic_cast<mitk::Image *>(data);
     if (image)
     {
-      std::stringstream message;
+      //std::stringstream message;
       std::string name;
-      message << "Performing image processing for image ";
+      //message << "Performing image processing for image ";
       if (node->GetName(name))
       {
         // a property called "name" was found for this DataNode
-        message << "'" << name << "'";
+        cout << "'" << name << "'"<<endl;
       }
-      message << ".";
-      MITK_INFO << message.str();
+      //message << ".";
+      //MITK_INFO << message.str();
     //mitk::DataNode::Pointer output_node = mitk::DataNode::New();
       QString nodename(node->GetName().c_str());
       m_Controls.infolabel->setText("Segmentación en proceso...");
@@ -246,11 +251,13 @@ void IASegmentadorAbdominalView::DoImageProcessing()
       my_infer_process->InfereSegmentation(image,nodename,ABDOMINAL,GetDataStorage());
       m_Controls.infolabel->setText("");
       m_Controls.buttonPerformImageProcessing->setEnabled(true);
+      mitk::RenderingManager::GetInstance()->RequestUpdateAll();
     //GetDataStorage()->Add(output_node);
     }
 
   }
-
+  double timetaken = clock() - tStart;
+  cout<< "Clocks taken: "<<timetaken<<endl;
 }
 
 IASegmentadorAbdominalView::~IASegmentadorAbdominalView()

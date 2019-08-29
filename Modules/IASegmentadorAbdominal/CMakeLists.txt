@@ -1,5 +1,5 @@
 mitk_create_module(IASegmentadorAbdominal
-  DEPENDS PUBLIC MitkCore MitkPython
+  DEPENDS PUBLIC MitkCore MitkPython MitkDataTypesExt
   PACKAGE_DEPENDS Qt5|Core Qt5|Widgets
   WARNINGS_NO_ERRORS
 )
