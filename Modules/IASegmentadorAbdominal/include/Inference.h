@@ -12,6 +12,8 @@
 #include <mitkDataStorage.h>
 #include <IASegmentadorAbdominalExports.h>
 #include <mitkColorSequenceRainbow.h>
+# include <mitkLookupTable.h>
+
 
 class IASegmentadorAbdominal_EXPORT Inference{
      public:
@@ -20,19 +22,19 @@ class IASegmentadorAbdominal_EXPORT Inference{
         void InfereSegmentation(mitk::Image *input_image, QString node_name, int model_type,mitk::DataStorage::Pointer ds);// mitk::DataNode *output_node);
         std::vector<int> m_selected_labels = {0,0,0,0,0,0,0,0};
         std::vector<std::string> organs_names = { "Bazo", "Rinon", "Vesicula","Esofago", "Higado", "Estomago", "Pancreas", "Duodeno" };
-        void CleanDir();
+        void CleanDir(std::string path);
 
     private:
+        void SetLookUpTable();
         void SaveInput(mitk::Image *image, std::string inputpath);
         void ProcessNiftynet();
         std::string GetOrgansList();
         void InstallPackages();
         void LoadImageFromPath(mitk::DataStorage::Pointer ds, std::string outputpath);
-        void LoadSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name);
+        void GetSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name);
         void SetPaths();
         void SetModelSubdir(int model_type);
-        void WriteRequiredLabelsTXT(std::string requiredLabels);
-
+        void CreateMasks(std::vector<int> missingmasks, std::string NiftyNetOutputPath,mitk::DataStorage::Pointer ds);
         std::string NIFTYNETPATH;
         std::string INPUT;
         std::string INPUTNAME;
@@ -43,6 +45,7 @@ class IASegmentadorAbdominal_EXPORT Inference{
         std::string MASKS_SHFILE;
         std::string MODELSUBDIR;
         std::vector<std::string> MODELNAMES;
+        mitk::LookupTable::Pointer m_lutUS;
 
 
         mitk::ColorSequenceRainbow m_Rainbow;

@@ -200,8 +200,6 @@ bool IASegmentadorAbdominalView::checkIfOrganSegm(std::string nodeName)
 
 void IASegmentadorAbdominalView::DoImageProcessing()
 {
-  cout<<CLOCKS_PER_SEC<<endl;
-  return;
   clock_t tStart = clock();
 
   cout<<"Botón presionado"<<endl;
@@ -256,12 +254,12 @@ void IASegmentadorAbdominalView::DoImageProcessing()
     }
 
   }
-  double timetaken = clock() - tStart;
-  cout<< "Clocks taken: "<<timetaken<<endl;
+  double timetaken = (clock() - tStart)/CLOCKS_PER_SEC;
+  cout<< "Clocks taken: "<<timetaken<<" segundos"<<endl;
 }
 
 IASegmentadorAbdominalView::~IASegmentadorAbdominalView()
 {
     cout<<"Destructor"<<endl;
-    my_infer_process->CleanDir();
+    my_infer_process->~Inference();
 }
