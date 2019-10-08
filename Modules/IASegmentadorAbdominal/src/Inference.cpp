@@ -24,6 +24,17 @@
 #include <itkLabelSelectionLabelMapFilter.h>
 #include <itkLabelMapToLabelImageFilter.h>
 #include <itkMinimumMaximumImageCalculator.h>
+#include "itkImage.h"
+#include "itkImageFileWriter.h"
+#include "itkImageRegionIterator.h"
+#include "itkBinaryImageToShapeLabelMapFilter.h"
+#include "itkShapeOpeningLabelMapFilter.h"
+#include "itkLabelMapToLabelImageFilter.h"
+#include "itkScalarToRGBColormapImageFilter.h"
+#include <itkConnectedComponentImageFilter.h>
+#include <itkRescaleIntensityImageFilter.h>
+#include <itkLabelShapeKeepNObjectsImageFilter.h>
+#include <itkLabelImageToShapeLabelMapFilter.h>
 
 #include <mitkImageCast.h>
 #include <mitkColorSequenceRainbow.h>
@@ -36,7 +47,7 @@
 #include <string>
 
 #include <stdio.h>  /* defines FILENAME_MAX */
-#ifdef _WIN32 || _WIN64
+#ifdef _WIN32
     #include <direct.h>
     #define GetCurrentDir _getcwd
 #else
@@ -83,7 +94,7 @@ void Inference::SetPaths()
     std::string delimiter = "/";
     NIFTYNETPATH = s.substr(0, s.find_last_of(delimiter)) + "/Modules/IASegmentadorAbdominal/NiftyNet/";
     INPUT = "/inputs/";
-    OUTPUT = "/outputs/";
+    OUTPUT = "outputs/";
     SEGMENTATION = "/segmentations/";
     INPUTNAME = "_input.nii.gz";
     OUTPUTNAME = "_input_niftynet_out.nii.gz";
@@ -148,7 +159,6 @@ std::string Inference::GetOrgansList()
 {
     std::string organsList = "";
     for(std::vector<int>::size_type i = 0; i != m_selected_labels.size(); i++) {
-        //cout<<organs_names[i]<< ". " << m_selected_labels[i]<<endl;
 
         if (m_selected_labels[i]==1)        {
            organsList = organsList +  "-" + std::to_string(i);
@@ -163,10 +173,6 @@ void Inference::ProcessNiftynet(){
     QProcess p;
     QStringList params;
 
-    //cout<<"bashfile: "<<bashfile<<endl;
-    //QString bashfileQ(bashfile.c_str());
-    //QString labelsList(GetOrgansList().c_str());
-    //params<<"-i"<<bashfileQ;//<<labelsList;
     cout<<"INICIA NIFTYNET"<<endl;
     params<<"-i"<<bashfile.c_str();
     p.start("bash",params); // ,params);
@@ -196,41 +202,93 @@ void Inference::CreateMasks(std::vector<int> missingmasks, std::string node_name
     cout<<"NiftyPath: "<<NiftyNetOutputPath<<endl;
     constexpr unsigned int Dimension = 3;
 
-    using PixelType = unsigned char;
-    //typedef itk::RGBAPixel<unsigned char> PixelType;
-    using ImageType = itk::Image< PixelType, Dimension >;
+    //using PixelType = unsigned char;
 
+    //using ImageType = itk::Image< PixelType, Dimension >;
+    //using OutputImageType = itk::Image<unsigned short, Dimension>;
+
+
+    using PixelType = unsigned char;
+    using LabelType = unsigned short;
+    using ImageType = itk::Image<PixelType, Dimension>;
+    //using OutputImageType = itk::Image<LabelType, Dimension>;
+    //using ShapeLabelObjectType = itk::ShapeLabelObject<LabelType, Dimension>;
+    //using ShapeLabelMapType = itk::LabelMap<ShapeLabelObjectType>;
+    using LabelObjectType = itk::LabelObject< LabelType, Dimension >;
+    using LabelMapType = itk::LabelMap< LabelObjectType >;
+
+
+    //1)REader
     using ReaderType = itk::ImageFileReader< ImageType >;
     ReaderType::Pointer reader1 = ReaderType::New();
     reader1->SetFileName(NiftyNetOutputPath);
 
-    using LabelObjectType = itk::LabelObject< PixelType, Dimension >;
-    using LabelMapType = itk::LabelMap< LabelObjectType >;
-
-    typedef itk::LabelMapToLabelImageFilter<LabelMapType, ImageType> LabelMap2ImageType;
-
+    //2) ImageType a LabelMap
     using LabelImageToLabelMapFilterType = itk::LabelImageToLabelMapFilter< ImageType, LabelMapType >;
     LabelImageToLabelMapFilterType::Pointer labelMapConverter = LabelImageToLabelMapFilterType::New();
     labelMapConverter->SetInput( reader1->GetOutput() );
     labelMapConverter->SetBackgroundValue( itk::NumericTraits< PixelType >::Zero );
 
+
+    //3) Selector: LabelMap a LabelMap
     using SelectorType = itk::LabelSelectionLabelMapFilter< LabelMapType >;
     SelectorType::Pointer selector = SelectorType::New();
     selector->SetInput( labelMapConverter->GetOutput() );
 
-    //largestRegionFilter = itk.LargestConnectedComponentFilter[ImageType,ImageType].New()
+    //4) LabelMap a ImageType
+    typedef itk::LabelMapToLabelImageFilter<LabelMapType, ImageType> LabelMap2ImageType;
+    LabelMap2ImageType::Pointer label2image = LabelMap2ImageType::New();
+
+    //5) Calculador min y max: ImageType a scalar
+    using ImageCalculatorFilterType = itk::MinimumMaximumImageCalculator <ImageType>;
+    ImageCalculatorFilterType::Pointer imageCalculatorFilter
+            = ImageCalculatorFilterType::New ();
+
+    //6) ConnectedRegion: ImageType a OutputImageType
+    using ConnectedComponentImageFilterType = itk::ConnectedComponentImageFilter<ImageType, ImageType>;
+    ConnectedComponentImageFilterType::Pointer connected = ConnectedComponentImageFilterType::New();
+
+    //7) ImageType a LabelMap
+    LabelImageToLabelMapFilterType::Pointer labelMapConverter2 = LabelImageToLabelMapFilterType::New();
+
+
+    //7) Shaper: OutputImageType a ShapeLabelMap
+    //using I2LType = itk::LabelImageToShapeLabelMapFilter<OutputImageType, ShapeLabelMapType>;
+    //I2LType::Pointer image2ShapeLabel = I2LType::New();
+
+    //Instanciar el selector de region mas grande
+    /*ESTO DA ERROR:
+    using LabelShapeKeepNObjectsImageFilterType = itk::LabelShapeKeepNObjectsImageFilter<OutputImageType>;
+    LabelShapeKeepNObjectsImageFilterType::Pointer labelShapeKeepNObjectsImageFilter =
+      LabelShapeKeepNObjectsImageFilterType::New();
+
+    labelShapeKeepNObjectsImageFilter->SetBackgroundValue(0);
+    labelShapeKeepNObjectsImageFilter->SetNumberOfObjects(1);
+    labelShapeKeepNObjectsImageFilter->SetAttribute(
+      LabelShapeKeepNObjectsImageFilterType::LabelObjectType::NUMBER_OF_PIXELS);*/
+
+
+    /*ESTO DA ERROR:
+
+    using BinaryImageToShapeLabelMapFilterType = itk::BinaryImageToShapeLabelMapFilter<ImageType>;
+    BinaryImageToShapeLabelMapFilterType::Pointer binaryImageToShapeLabelMapFilter =
+      BinaryImageToShapeLabelMapFilterType::New();
+
+     ESTO NO DA ERROR:
+    using RescaleFilterType = itk::RescaleIntensityImageFilter<OutputImageType, ImageType>;
+    RescaleFilterType::Pointer rescaleFilter = RescaleFilterType::New();
+    rescaleFilter->SetOutputMinimum(0);
+    rescaleFilter->SetOutputMaximum(itk::NumericTraits<PixelType>::max());
+    */
+
+    //8) Writer
     using WriterType = itk::ImageFileWriter<ImageType>;
     WriterType::Pointer writer = WriterType::New();
 
 
-    LabelMap2ImageType::Pointer label2image = LabelMap2ImageType::New();
 
-    using ImageCalculatorFilterType = itk::MinimumMaximumImageCalculator <ImageType>;
 
-    ImageCalculatorFilterType::Pointer imageCalculatorFilter
-            = ImageCalculatorFilterType::New ();
-
-    std::string mess = "El algoritmo no logró segmentar el órgano ";
+    std::string mess = "El algoritmo no logró segmentar el órgano \n";
     bool messFlag = false;
     for(std::vector<int>::size_type j = 0; j != missingmasks.size(); j++)
     {
@@ -238,7 +296,10 @@ void Inference::CreateMasks(std::vector<int> missingmasks, std::string node_name
         int l = missingmasks[j];
         cout<<"Procesando máscara de "<<organs_names[l]<<endl;
         const auto label = static_cast< PixelType >(l+1);
+
+        //Selecciono solo los pixeles de la imagen correspondiente al organo j
         selector->SetLabel(label);
+
         label2image->SetInput(selector->GetOutput(0));
         label2image->Update();
         imageCalculatorFilter->SetImage(label2image->GetOutput());
@@ -246,13 +307,93 @@ void Inference::CreateMasks(std::vector<int> missingmasks, std::string node_name
         if(imageCalculatorFilter->GetMaximum() ==imageCalculatorFilter->GetMinimum())
         {
             cout<<"vacia"<<endl;
-            mess = mess + organs_names[l] + " ";
+            mess = mess + organs_names[l] + " \n";
             messFlag = true;
             continue;
         }
-        //Load al datastorage actual
+        connected->SetInput(label2image->GetOutput());
+        labelMapConverter2->SetInput(connected->GetOutput(0));
+        labelMapConverter2->Update();
+        LabelMapType *labelMap = labelMapConverter2->GetOutput();
+        // Retrieve all attributes
+        unsigned int maximumPixels = 0;
+        for (unsigned int n = 0; n < labelMap->GetNumberOfLabelObjects(); ++n)
+        {
+          LabelObjectType * labelObject = labelMap->GetNthLabelObject(n);
+          const unsigned int pixels = labelObject->Size();
+          cout << "Label: " << itk::NumericTraits<LabelMapType::LabelType>::PrintType(labelObject->GetLabel())
+                    << "Pixels: " << pixels << endl;
+          if (pixels<maximumPixels)
+          {
+              labelMap->RemoveLabelObject(labelObject);
+              cout<<"Se elimina este objeto"<<endl;
+          }
+          else {
+              maximumPixels = pixels;
+          }
+
+        }
+        label2image->SetInput(labelMap);
+        label2image->Update();
+        //Distingo las regiones conectadas
+        /*connected->SetInput(label2image->GetOutput());
+        connected->Update();
+        image2ShapeLabel->SetInput(connected->GetOutput());
+        image2ShapeLabel->SetComputePerimeter(true);
+        image2ShapeLabel->Update();
+
+        ShapeLabelMapType * labelMap = image2ShapeLabel->GetOutput();
+        cout <<" has " << labelMap->GetNumberOfLabelObjects() << " labels." << std::endl;
+
+        // Retrieve all attributes
+        for (unsigned int n = 0; n < labelMap->GetNumberOfLabelObjects(); ++n)
+        {
+          ShapeLabelObjectType * labelObject = labelMap->GetNthLabelObject(n);
+          std::cout << "Label: " << itk::NumericTraits<LabelMapType::LabelType>::PrintType(labelObject->GetLabel())
+                    << std::endl;
+          std::cout << "    BoundingBox: " << labelObject->GetBoundingBox() << std::endl;
+          std::cout << "    NumberOfPixels: " << labelObject->GetNumberOfPixels() << std::endl;
+          std::cout << "    PhysicalSize: " << labelObject->GetPhysicalSize() << std::endl;
+          std::cout << "    Centroid: " << labelObject->GetCentroid() << std::endl;
+          std::cout << "    NumberOfPixelsOnBorder: " << labelObject->GetNumberOfPixelsOnBorder() << std::endl;
+          std::cout << "    PerimeterOnBorder: " << labelObject->GetPerimeterOnBorder() << std::endl;
+          std::cout << "    FeretDiameter: " << labelObject->GetFeretDiameter() << std::endl;
+          std::cout << "    PrincipalMoments: " << labelObject->GetPrincipalMoments() << std::endl;
+          std::cout << "    PrincipalAxes: " << labelObject->GetPrincipalAxes() << std::endl;
+          std::cout << "    Elongation: " << labelObject->GetElongation() << std::endl;
+          std::cout << "    Perimeter: " << labelObject->GetPerimeter() << std::endl;
+          std::cout << "    Roundness: " << labelObject->GetRoundness() << std::endl;
+          std::cout << "    EquivalentSphericalRadius: " << labelObject->GetEquivalentSphericalRadius() << std::endl;
+          std::cout << "    EquivalentSphericalPerimeter: " << labelObject->GetEquivalentSphericalPerimeter() << std::endl;
+          std::cout << "    EquivalentEllipsoidDiameter: " << labelObject->GetEquivalentEllipsoidDiameter() << std::endl;
+          std::cout << "    Flatness: " << labelObject->GetFlatness() << std::endl;
+          std::cout << "    PerimeterOnBorderRatio: " << labelObject->GetPerimeterOnBorderRatio() << std::endl;
+        }*/
+        //Me quedo solo con la region más grande
+        //labelShapeKeepNObjectsImageFilter->SetInput(connected->GetOutput());
+        //labelShapeKeepNObjectsImageFilter->Update();
+
+
+        //rescaleFilter->SetInput(labelShapeKeepNObjectsImageFilter->GetOutput());
+        /*
+        binaryImageToShapeLabelMapFilter->SetInput(label2image->GetOutput());
+        binaryImageToShapeLabelMapFilter->Update();
+
+        // The output of this filter is an itk::ShapeLabelMap, which contains itk::ShapeLabelObject's
+        cout << "There are " << binaryImageToShapeLabelMapFilter->GetOutput()->GetNumberOfLabelObjects() << " objects."
+                  << endl;
+
+        for (unsigned int i = 0; i < binaryImageToShapeLabelMapFilter->GetOutput()->GetNumberOfLabelObjects(); i++)
+        {
+          BinaryImageToShapeLabelMapFilterType::OutputImageType::LabelObjectType * labelObject =
+            binaryImageToShapeLabelMapFilter->GetOutput()->GetNthLabelObject(i);
+          // Output the bounding box (an example of one possible property) of the ith region
+            cout << "Object " << i << " has pixels " << labelObject->GetNumberOfPixels() << endl;
+
+        }_*/
+
         mitk::Image::Pointer m_ResultImage = mitk::Image::New();
-        mitk::CastToMitkImage(label2image->GetOutput(), m_ResultImage); //CAMBIAR READER POR label2image
+        mitk::CastToMitkImage(label2image->GetOutput(), m_ResultImage);
         mitk::DataNode::Pointer m_Node = mitk::DataNode::New();
         m_Node->SetData(m_ResultImage);
         m_Node->SetBoolProperty("binary",false);
@@ -272,10 +413,11 @@ void Inference::CreateMasks(std::vector<int> missingmasks, std::string node_name
         writer->SetFileName(outputpath);
         writer->SetInput(label2image->GetOutput());
         writer->Update();
-        if (messFlag)
-            QMessageBox::information(nullptr, "Template", QString(mess.c_str()));
+
 
     }
+    if (messFlag)
+        QMessageBox::information(nullptr, "Template", QString(mess.c_str()));
 }
 
 void Inference::GetSegmentationMasks(mitk::DataStorage::Pointer ds, std::string node_name)
@@ -285,7 +427,6 @@ void Inference::GetSegmentationMasks(mitk::DataStorage::Pointer ds, std::string 
     std::vector<int> missingMasksIdx;
     for(std::vector<int>::size_type i = 0; i != m_selected_labels.size(); i++)
     {
-        //cout<<organs_names[i]<< ". " << m_selected_labels[i]<<endl;
 
         if (m_selected_labels[i]==1)
         {
@@ -339,25 +480,15 @@ void Inference::InfereSegmentation(mitk::Image *input_image, QString node_name,i
     if (exists(outputpath)!=1)
     {
         ProcessNiftynet();
-        //LoadSegmentationMasks(ds,node_name.toStdString());
         GetSegmentationMasks(ds,node_name.toStdString());
     }
     else
     {
         cout<<"Ya existe la segmentacion de Niftynet en Outputs"<<endl;
-        //LoadSegmentationMasks(ds,node_name.toStdString());
         GetSegmentationMasks(ds,node_name.toStdString());
 
 
     }
-        //mitk::Image::Pointer output_image;
-    //output_node->SetData(output_image);
-    //output_node->SetName("SegmentacionIA");
-
-
-    //ds->GetNamedNode(outputpath)->SetName("Todos");
-
-    //
 
 
 }
