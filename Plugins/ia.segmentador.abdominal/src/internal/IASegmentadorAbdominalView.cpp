@@ -36,9 +36,7 @@ void IASegmentadorAbdominalView::SetFocus()
 
 void IASegmentadorAbdominalView::CreateQtPartControl(QWidget *parent)
 {
-  // create GUI widgets from the Qt Designer's .ui file
   m_Controls.setupUi(parent);
-  //connect(m_Controls.cbHigado, SIGNAL(activated(int)), this, SLOT(onHigado()));
   connect(m_Controls.cbTodos, &QCheckBox::clicked,this,&IASegmentadorAbdominalView::onTodos);
 
   connect(m_Controls.cbBazo, &QCheckBox::clicked,this,&IASegmentadorAbdominalView::onBazo);
@@ -221,36 +219,28 @@ void IASegmentadorAbdominalView::DoImageProcessing()
     QMessageBox::information(nullptr, "Template", "Por favor seleccione una imagen válida.");
     return;
   }
-  // here we have a valid mitk::DataNode
-
-  // a node itself is not very useful, we need its data item (the image)
   mitk::BaseData *data = node->GetData();
   if (data)
   {
 
     // test if this data item is an image or not (could also be a surface or something totally different)
+
     mitk::Image *image = dynamic_cast<mitk::Image *>(data);
     if (image)
     {
-      //std::stringstream message;
-      std::string name;
-      //message << "Performing image processing for image ";
-      if (node->GetName(name))
+      std::string nodename = node->GetName();
+      if (nodename.size() > 25)
       {
-        // a property called "name" was found for this DataNode
-        cout << "'" << name << "'"<<endl;
+          QMessageBox::information(nullptr, "Template", "El nombre del nodo es muy largo. Escriba un nombre de menos de 25 caractéres.");
+          return;
       }
-      //message << ".";
-      //MITK_INFO << message.str();
-    //mitk::DataNode::Pointer output_node = mitk::DataNode::New();
-      QString nodename(node->GetName().c_str());
+
       m_Controls.infolabel->setText("Segmentación en proceso...");
       m_Controls.buttonPerformImageProcessing->setEnabled(false);
-      my_infer_process->InfereSegmentation(image,nodename,ABDOMINAL,GetDataStorage());
+      my_infer_process->InfereSegmentation(nodename,ABDOMINAL,GetDataStorage());
       m_Controls.infolabel->setText("");
       m_Controls.buttonPerformImageProcessing->setEnabled(true);
       mitk::RenderingManager::GetInstance()->RequestUpdateAll();
-    //GetDataStorage()->Add(output_node);
     }
 
   }
@@ -260,6 +250,5 @@ void IASegmentadorAbdominalView::DoImageProcessing()
 
 IASegmentadorAbdominalView::~IASegmentadorAbdominalView()
 {
-    cout<<"Destructor"<<endl;
-    my_infer_process->~Inference();
+    delete my_infer_process;
 }
